@@ -46,7 +46,9 @@
 #ifndef __CPU_MINOR_DYN_INST_HH__
 #define __CPU_MINOR_DYN_INST_HH__
 
+#include <cstring>
 #include <iostream>
+#include <memory>
 
 #include "arch/generic/isa.hh"
 #include "base/named.hh"
@@ -169,6 +171,40 @@ class MinorDynInst : public RefCounted
     static MinorDynInstPtr bubbleInst;
 
   public:
+    /** One instruction's register value. Consumers retain this version even
+     *  if a younger writer replaces the shared forwarding register. */
+    struct RegisterValue
+    {
+        std::vector<uint8_t> data;
+        bool ready = false;
+
+        explicit RegisterValue(size_t size) : data(size) {}
+
+        void
+        set(const void *value)
+        {
+            std::memcpy(data.data(), value, data.size());
+            ready = true;
+        }
+
+        void
+        get(void *value) const
+        {
+            assert(ready);
+            std::memcpy(value, data.data(), data.size());
+        }
+
+        RegVal
+        get() const
+        {
+            assert(data.size() == sizeof(RegVal));
+            RegVal value;
+            get(&value);
+            return value;
+        }
+    };
+    using RegisterValuePtr = std::shared_ptr<RegisterValue>;
+
     const StaticInstPtr staticInst;
 
     InstId id;
@@ -237,11 +273,15 @@ class MinorDynInst : public RefCounted
      *  have the same register indices as when the instruction was marked
      *  up */
     std::vector<RegId> flatDestRegIdx;
+    std::vector<RegisterValuePtr> sourceValues;
+    std::vector<RegisterValuePtr> destValues;
     std::vector<RegFile> regsAfterExecution;
 
   public:
     MinorDynInst(StaticInstPtr si, InstId id_ = InstId(), Fault fault_ = NoFault) : staticInst(si), id(id_), fault(fault_), translationFault(NoFault),
-                                                                                    flatDestRegIdx(si ? si->numDestRegs() : 0)
+                                                                                    flatDestRegIdx(si ? si->numDestRegs() : 0),
+                                                                                    sourceValues(si ? si->numSrcRegs() : 0),
+                                                                                    destValues(si ? si->numDestRegs() : 0)
     { }
 
   public:
@@ -249,6 +289,14 @@ class MinorDynInst : public RefCounted
     bool isBubble() const { return id.fetchSeqNum == 0; }
     void setRegsAfterExecution(const std::array<RegFile, CCRegClass + 1>& regs)
     {
+      // Writable vector operands modify the forwarding file directly. Capture
+      // them before another instruction can reuse the destination register.
+      for (size_t i = 0; i < destValues.size(); ++i) {
+        if (destValues[i] && !destValues[i]->ready) {
+          const RegId &reg = flatDestRegIdx[i];
+          destValues[i]->set(regs[reg.classValue()].ptr(reg.index()));
+        }
+      }
       regsAfterExecution.clear();
       for (auto i = 0; i < CCRegClass + 1; i++) {
         regsAfterExecution.push_back(regs[i]);

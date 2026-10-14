@@ -107,6 +107,10 @@ namespace gem5
        *  register value */
       std::vector<InstSeqNum> writingInst;
 
+      /** Latest decoded producer's value, including results not yet ready.
+       *  Source operands hold their own reference before this is replaced. */
+      std::vector<MinorDynInst::RegisterValuePtr> registerValues;
+
     public:
       Scoreboard(const std::string &name,
                  const BaseISA::RegClasses &reg_classes) : Named(name),
@@ -123,7 +127,8 @@ namespace gem5
                                                            fuIndices(numRegs, invalidFUIndex),
                                                            returnCycle(numRegs, Cycles(0)),
                                                            oldReturnCycles(numRegs, Cycles(0)),
-                                                           writingInst(numRegs, 0)
+                                                           writingInst(numRegs, 0),
+                                                           registerValues(numRegs)
       {
       }
 

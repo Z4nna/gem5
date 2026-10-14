@@ -149,28 +149,30 @@ class ExecContext : public gem5::ExecContext
         const RegId &reg = si->srcRegIdx(idx);
         if (reg.is(InvalidRegClass))
             return 0;
+        if (inst->sourceValues[idx])
+            return inst->sourceValues[idx]->get();
         return thread.getFwdReg(reg);
     }
 
     RegVal
     getFwdRegOperand(const StaticInst *si, int idx) override
     {
-        const RegId &reg = si->srcRegIdx(idx);
-        if (reg.is(InvalidRegClass))
-            return 0;
-        return thread.getFwdReg(reg);
+        return getRegOperand(si, idx);
     }
 
     void
     getRegOperand(const StaticInst *si, int idx, void *val) override
     {
-        thread.getFwdReg(si->srcRegIdx(idx), val);
+        if (inst->sourceValues[idx])
+            inst->sourceValues[idx]->get(val);
+        else
+            thread.getFwdReg(si->srcRegIdx(idx), val);
     }
 
     void
     getFwdRegOperand(const StaticInst *si, int idx, void *val) override
     {
-        thread.getFwdReg(si->srcRegIdx(idx), val);
+        getRegOperand(si, idx, val);
     }
 
     void *
@@ -191,28 +193,32 @@ class ExecContext : public gem5::ExecContext
         const RegId &reg = si->destRegIdx(idx);
         if (reg.is(InvalidRegClass))
             return;
+        if (inst->destValues[idx])
+            inst->destValues[idx]->set(&val);
         thread.setFwdReg(si->destRegIdx(idx), val);
     }
 
     void
     setFwdRegOperand(const StaticInst *si, int idx, RegVal val) override
     {
-        const RegId &reg = si->destRegIdx(idx);
-        if (reg.is(InvalidRegClass))
-            return;
-        thread.setFwdReg(si->destRegIdx(idx), val);
+        setRegOperand(si, idx, val);
     }
 
     void
     setRegOperand(const StaticInst *si, int idx, const void *val) override
     {
-        thread.setFwdReg(si->destRegIdx(idx), val);
+        const RegId &reg = si->destRegIdx(idx);
+        if (reg.is(InvalidRegClass))
+            return;
+        if (inst->destValues[idx])
+            inst->destValues[idx]->set(val);
+        thread.setFwdReg(reg, val);
     }
 
     void
     setFwdRegOperand(const StaticInst *si, int idx, const void *val) override
     {
-        thread.setFwdReg(si->destRegIdx(idx), val);
+        setRegOperand(si, idx, val);
     }
     void dumpRegisters() {
         thread.dumpRegisters();
@@ -228,7 +234,12 @@ class ExecContext : public gem5::ExecContext
             const RegId &reg = si->destRegIdx(i);
             if (reg.is(InvalidRegClass))
                 continue;
-            thread.setReg(reg, thread.getFwdReg(reg));
+            if (inst->destValues[i]) {
+                assert(inst->destValues[i]->ready);
+                thread.setReg(reg, inst->destValues[i]->data.data());
+            } else {
+                thread.setReg(reg, thread.getFwdReg(reg));
+            }
         }
     }
 
