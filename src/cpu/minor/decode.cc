@@ -1098,6 +1098,7 @@ namespace gem5
                                     decode_info.predictionSeqNum++;
                                 }
                                 DPRINTF(Decode, "Executing control inst: %s\n", *inst_ptr_4_GUI);
+                                inst_ptr_4_GUI->setRegsAfterExecution(context.getFwdRegFiles());
                                 context.writeback(inst_ptr_4_GUI->staticInst);
                                 inst_ptr_4_GUI->executed = true;
                                 earlyBranch(inst_ptr_4_GUI, fault, prediction);
@@ -1229,6 +1230,7 @@ namespace gem5
                                           *output_inst, fault->name());
                                 }
                                 DPRINTF(Decode, "Executing control inst: %s\n", *output_inst);
+                                output_inst->setRegsAfterExecution(context.getFwdRegFiles());
                                 context.writeback(output_inst->staticInst);
                                 output_inst->executed = true;
                                 earlyBranch(output_inst, fault, prediction);

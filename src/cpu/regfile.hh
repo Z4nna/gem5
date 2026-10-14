@@ -111,7 +111,11 @@ class RegFile
         for (size_t i = 0; i < regsSize && i < 32; ++i) {
             RegVal val = reg(i);
             const RegId regId(regClass, i);
-            DPRINTF_GLOBAL(MinorGUI, "%s%d=0x%08x\n", regClass.type() == RegClassType::IntRegClass ? "x" : "f", i, (int32_t) val);
+            if (regClass.type() == RegClassType::FloatRegClass)
+                DPRINTF_GLOBAL(MinorGUI, "f%d=0x%016x\n", i, val);
+            else
+                DPRINTF_GLOBAL(MinorGUI, "x%d=0x%08x\n", i,
+                               static_cast<uint32_t>(val));
         }
     }
 

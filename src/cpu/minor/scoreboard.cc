@@ -102,6 +102,32 @@ namespace gem5
 
             auto *isa = thread_context->getIsaPtr();
 
+            // Bind sources before replacing any destination version. A
+            // read-modify-write instruction must consume the older result.
+            // Copying the forwarding file at FU entry would be too early for
+            // a producer completing later in that same Execute evaluation.
+            for (unsigned int src_index = 0;
+                 src_index < staticInst->numSrcRegs(); ++src_index)
+            {
+                RegId reg = staticInst->srcRegIdx(src_index).flatten(*isa);
+                Index index;
+                if (!findIndex(reg, index))
+                    continue;
+
+                if (registerValues[index])
+                {
+                    inst->sourceValues[src_index] = registerValues[index];
+                }
+                else
+                {
+                    auto value = std::make_shared<MinorDynInst::RegisterValue>(
+                        reg.regClass().regBytes());
+                    thread_context->getFwdReg(reg, value->data.data());
+                    value->ready = true;
+                    inst->sourceValues[src_index] = std::move(value);
+                }
+            }
+
             /** Mark each destination register */
             for (unsigned int dest_index = 0; dest_index < num_dests;
                  dest_index++)
@@ -120,6 +146,10 @@ namespace gem5
                     }
 
                     inst->flatDestRegIdx[dest_index] = reg;
+                    auto value = std::make_shared<MinorDynInst::RegisterValue>(
+                        reg.regClass().regBytes());
+                    inst->destValues[dest_index] = value;
+                    registerValues[index] = std::move(value);
 
                     numResults[index]++;
                     returnCycle[index] = retire_time;
@@ -193,6 +223,9 @@ namespace gem5
 
                 if (findIndex(reg, index))
                 {
+                    if (registerValues[index] == inst->destValues[dest_index])
+                        registerValues[index].reset();
+
                     if (clear_unpredictable && numUnpredictableResults[index] != 0)
                     {
                         numUnpredictableResults[index]--;
